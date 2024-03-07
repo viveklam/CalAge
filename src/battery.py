@@ -70,7 +70,7 @@ class Battery:
         This method is used to determine whether it is time for the battery to
         go through a diagnostic or a checkup cycle.
 
-        Returns: True if today is later than the next diagnostic. False if not
+        Returns(Boolean): True if today is later than the next diagnostic. False if not
         """
 
         next_diag_datetime = datetime.strptime(self.next_diag, "%m/%d/%Y")
@@ -78,11 +78,14 @@ class Battery:
         
     def generateDataFile(self):
         """
-        Returns a file name to store the data in.
+        Returns(str) a file name to store the data in.
         """
         return "{}_{}_{}_CU{}".format(self.proj_name, self.seqnum, self.barcode, self.diagnostic_number)
 
     def generateSettingFile(self):
-        #NEED TO UPDATE THIS FUNCTION
+        """
+        Generates a setting file based on the function provided below. 
+        """
+        #NEED TO UPDATE THIS FUNCTION to reflect what I have as my SOC correction
         #To properly do this I think I need to add a setting file name
         return "{}_{}SOC.mps".format(self.proj_name, self.soc)
