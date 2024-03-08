@@ -2,9 +2,7 @@ class TemperatureChamber:
 
     def __init__(self, name, battery_list, temperature):
         """
-        Constructor of a Temeprature Chamber object.
-
-        Could potentially augment this to say which rack a battery will be on
+        Constructor of a Temperature Chamber object.
 
         Parameters
         ----------
@@ -14,6 +12,8 @@ class TemperatureChamber:
             List of all the batteries barcodes that belong in this temperature chamber. 
         :param temperature: int
             Temperature that the temperature chamber is being held at
+
+        TODO: Could potentially augment this to say which rack a battery will be on
         """
         self.name = str(name)
         self.battery_list = list(battery_list)
@@ -68,6 +68,7 @@ class DiagnosticChamber:
         This function defines the channel compatibility. This can be modified to handle whichever channel compatibility you would like
         such as "18650" and "21700" cells working with any channel labeled cylindrical for example.
 
+
         Args:
         channel_num: int
             Corresponds to the list index of the channel number
@@ -76,6 +77,8 @@ class DiagnosticChamber:
             Form factor of the battery that is trying to go in to the channel provided
 
         Returns: Boolean True if cell is compatible, False if not
+
+        TODO: Add a field for if a channel is broken potentially. 
         """
 
         #If channel can support any form_factor for example modular cell holders
@@ -145,17 +148,22 @@ class DiagnosticChamber:
         return assignment_dict
 
 
-    def estimated_end_time(self):
-        """This function will return the estimate for when all cells will end"""
+    def estimated_end_time(self, assignment_dict):
+        """This function will return the estimate for when."""
         pass
 
 
         
+    def generate_automatic_testing_file():
+        """ """
+        pass
+
 
     def start_testing(self):
         """
         Switches the diagnostic chamber to be actively testing.
         """
         self.in_operation = True
+
         pass
 
