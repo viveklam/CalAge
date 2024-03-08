@@ -1,3 +1,5 @@
+import pandas as pd
+
 class TemperatureChamber:
 
     def __init__(self, name, battery_list, temperature):
@@ -178,7 +180,6 @@ def load_new_diagnostic_chamber(diag_chamber_name, file_path):
         Path to csv file with DiagnosticChamber channels. Should have a channel and form_factor
         column. All channels will start unoccupied
         
-
     Returns: initialized DiagnosticChamber object
     """
 
@@ -189,7 +190,6 @@ def load_new_diagnostic_chamber(diag_chamber_name, file_path):
     channel_dict["state"] = ["unoccupied"]*len(channel_dict["channel"])
     #Set all batteries to an empty string since the channels are unoccupied
     channel_dict["battery"] = [""]*len(channel_dict["channel"])
-
 
     diag_chamber = DiagnosticChamber(name=diag_chamber_name, channels=channel_dict)
     
