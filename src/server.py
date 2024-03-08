@@ -1,34 +1,6 @@
 import csv
 import json
 
-def load_new_batteries(file_path):
-    """
-    Takes in the path to a csv file to open. Opens it and initializes new batteries to start.
-
-    Args:
-    :param file_path: str
-        Path to csv file with battery to initalize. Needs at least the columns in the header:
-        proj_name, barcode, seqnum, temperature, soc, diagnostic_frequency, form_factor.
-    
-    Returns: [Battery] List of battery objects
-    """
-
-    #Open csv and get a list of the dictionaries key is header
-    with open(file_path, 'r', encoding='utf-8-sig') as file:
-        csv_reader = csv.DictReader(file)
-        battery_init_dicts = [row for row in csv_reader]
-
-    # For each of the rows in the csv, pass it all in to the battery object and make a battery object 
-    # and store in list
-    battery_list = []
-    for battery_dict in battery_init_dicts:
-        battery_obj = Battery(**battery_dict)
-        battery_list.append(battery_obj)
-    
-    return battery_list
-
-
-
 def save_battery_to_json(battery_list, file_path):
     """
     This function will save the battery list to the json file that is specified. The json file structure will be
