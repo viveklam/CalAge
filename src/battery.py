@@ -1,11 +1,11 @@
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from datetime import datetime
-
+import csv
 
 class Battery:
 
-    def __init__(self, proj_name, barcode, seqnum, temperature, soc, diagnostic_frequency, 
+    def __init__(self, proj_name, barcode, seqnum, temperature, soc, diagnostic_frequency, cell_type,
                 form_factor, next_diag="today", storage_location="Unassigned", current_location="Unassigned",
                 testing_files = [], testing_start_dates=[], test_file_in_progress="", active_status=True, under_diag=False,
                 diagnostic_number=0, setting_file_proj_name=None):
@@ -22,6 +22,9 @@ class Battery:
             The sequence number of the battery.
         :param temperature: int
             The temperature of the battery.
+        :param cell_type: str
+            The cell type i.e. K2EnergyLFPE, etc. Something that uniquely idenfitifies cells of 
+            a group together.
         :param diagnostic_frequency: int
             The frequency of diagnostic of the battery in days.
         :param form_factor: string
@@ -39,6 +42,7 @@ class Battery:
         self.temperature = int(temperature)
         self.soc = int(soc)
         self.diagnostic_frequency = int(diagnostic_frequency)
+        self.cell_type = cell_type
         self.form_factor = str(form_factor)
 
         self.active_status = bool(active_status)
@@ -78,17 +82,19 @@ class Battery:
         
     def generateDataFile(self):
         """
-        Returns(str) a file name to store the data in.
+        Returns a file name (str) that the data should be saved in.
         """
         return "{}_{}_{}_CU{}".format(self.proj_name, self.seqnum, self.barcode, self.diagnostic_number)
 
     def generateSettingFile(self):
         """
         Generates a setting file based on the function provided below. 
+        Update this function if you want the filename to be different.
         """
-        #NEED TO UPDATE THIS FUNCTION to reflect what I have as my SOC correction
-        #To properly do this I think I need to add a setting file name
-        return "{}_{}SOC.mps".format(self.proj_name, self.soc)
+        return "{}_{}_{}SOC.mps".format(self.proj_name, self.cell_type, self.soc)
+
+
+
 
 def load_new_batteries(file_path):
     """
