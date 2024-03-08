@@ -167,3 +167,30 @@ class DiagnosticChamber:
 
         pass
 
+def load_new_diagnostic_chamber(diag_chamber_name, file_path):
+    """
+    Takes in the path to a csv file to open. Opens it and initializes a new diagnostic chamber. 
+
+    Args:
+    :param diag_chamber_name: str
+        name of the diagnostic chamber
+    :param file_path: str
+        Path to csv file with DiagnosticChamber channels. Should have a channel and form_factor
+        column. All channels will start unoccupied
+        
+
+    Returns: initialized DiagnosticChamber object
+    """
+
+    #Using pandas to load in csv more cleanly
+    channel_df = pd.read_csv(file_path)
+    channel_dict = channel_df.to_dict(orient="list")
+    #set all channels to unoccupied
+    channel_dict["state"] = ["unoccupied"]*len(channel_dict["channel"])
+    #Set all batteries to an empty string since the channels are unoccupied
+    channel_dict["battery"] = [""]*len(channel_dict["channel"])
+
+
+    diag_chamber = DiagnosticChamber(name=diag_chamber_name, channels=channel_dict)
+    
+    return diag_chamber
