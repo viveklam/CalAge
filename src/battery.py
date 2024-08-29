@@ -1,6 +1,7 @@
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from datetime import datetime
+import json
 import csv
 
 class Battery:
@@ -94,8 +95,6 @@ class Battery:
         return "{}_{}_{}SOC.mps".format(self.proj_name, self.cell_type, self.soc)
 
 
-
-
 def load_new_batteries(file_path):
     """
     Takes in the path to a csv file to open. Opens it and initializes new batteries to start.
@@ -105,7 +104,8 @@ def load_new_batteries(file_path):
         Path to csv file with battery to initalize. Needs at least the columns in the header:
         proj_name, barcode, seqnum, temperature, soc, diagnostic_frequency, form_factor.
     
-    Returns: [Battery] List of battery objects
+    Returns: {"barcode": Battery} dictionary with battery barcode as key and a Battery obj as the
+                value.
     """
 
     #Open csv and get a list of the dictionaries key is header
@@ -115,9 +115,36 @@ def load_new_batteries(file_path):
 
     # For each of the rows in the csv, pass it all in to the battery object and make a battery object 
     # and store in list
-    battery_list = []
+    battery_obj_dict = {}
     for battery_dict in battery_init_dicts:
         battery_obj = Battery(**battery_dict)
-        battery_list.append(battery_obj)
+        battery_obj_dict[battery_obj.barcode] = battery_obj
     
-    return battery_list
+    return battery_obj_dict
+
+def load_existing_batteries(file_path):
+    """
+    Takes in the path to the json file where the existing batteries are currently stored.
+
+    Args:
+    :param file_path: str
+        Path to json file with all current batteries stored
+
+    Returns: {"barcode": Battery} dictionary with battery barcode as key and a Battery obj as the
+                value.
+    """
+
+    # Open the JSON file
+    with open(file_path, 'r') as infile:
+        json_battery_dict = json.load(infile)
+
+    #generate dictionary of battery objects
+    battery_obj_dict = {}
+    for key in json_battery_dict.keys():
+        battery_obj = Battery(**json_battery_dict[key])
+        battery_obj_dict[key] = battery_obj
+
+    return battery_obj_dict
+
+
+    

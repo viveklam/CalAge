@@ -1,8 +1,9 @@
 import pandas as pd
+import json
 
 class TemperatureChamber:
 
-    def __init__(self, name, battery_list, temperature):
+    def __init__(self, name, temperature, battery_list=[]):
         """
         Constructor of a Temperature Chamber object.
 
@@ -10,12 +11,13 @@ class TemperatureChamber:
         ----------
         :param name: str
             Name of the temperature chamber that will help in finding it in the lab
-        :param battery_list: [str]
-            List of all the batteries barcodes that belong in this temperature chamber. 
         :param temperature: int
             Temperature that the temperature chamber is being held at
+        :param battery_list: [str]
+            List of all the batteries barcodes that belong in this temperature chamber. 
 
-        TODO: Could potentially augment this to say which rack a battery will be on
+        TODO: Could potentially augment this to say which rack etc a battery would be on to
+                help find it. Or it could be ordered based on where it should be in the chamber.
         """
         self.name = str(name)
         self.battery_list = list(battery_list)
@@ -31,6 +33,52 @@ class TemperatureChamber:
         Returns: None
         """
         self.battery_list = self.battery_list+new_batteries
+
+def load_new_temperature_chambers(file_path):
+    """
+    Takes in the path to a csv file to open. Opens it and initializes new temperature chambers in the file. 
+
+    Args:
+    :param file_path: str
+        Path to csv file with temperature chamber channels. Should have a chamber_name, and temperature column.
+        
+    Returns: {"name": TemperatureChamber} return a dictionary with keys that are the chamber name and a value 
+                of a TemperatureChamber object.
+    """
+
+    temp_chamber_df = pd.read_csv(file_path)
+    temp_chamber_dict = {}
+    for _, row in temp_chamber_df.iterrows():
+        chamber_name = row["chamber_name"]
+        temperature = row["temperature"]
+        temp_chamber_dict[chamber_name] = TemperatureChamber(chamber_name, temperature)
+
+    return temp_chamber_dict
+
+def load_existing_temp_chambers(file_path):
+    """
+    Takes in the path to the json file where the existing temperature chambers are currently stored.
+
+    Args:
+    :param file_path: str
+        Path to json file with all current temperature chamber information is stored
+
+    Returns: {"chamber_name": TemperatureChamber} dictionary with temperature chamber name as key and a 
+                TemperatureChamber obj as the value.
+    """
+
+    # Open the JSON file
+    with open(file_path, 'r') as infile:
+        json_temp_chamb_dict = json.load(infile)
+
+    #generate dictionary of battery objects
+    temp_chamb_obj_dict = {}
+    for key in json_temp_chamb_dict.keys():
+        temp_chamb_obj = TemperatureChamber(**json_temp_chamb_dict[key])
+        temp_chamb_obj_dict[key] = temp_chamb_obj
+    
+    return temp_chamb_obj_dict
+
 
 
 class DiagnosticChamber:
@@ -156,8 +204,15 @@ class DiagnosticChamber:
 
 
         
-    def generate_automatic_testing_file():
-        """ """
+    def generate_automatic_testing_file(self, assignment_dict, batteries_to_test):
+        """ 
+        This function will generate the automatic testing_file that can be loaded in to the machine of choice. 
+        """
+
+        
+
+
+
         pass
 
 
@@ -169,28 +224,57 @@ class DiagnosticChamber:
 
         pass
 
-def load_new_diagnostic_chamber(diag_chamber_name, file_path):
+def load_new_diagnostic_chambers(file_path):
     """
-    Takes in the path to a csv file to open. Opens it and initializes a new diagnostic chamber. 
+    Takes in the path to a csv file to open. Opens it and initializes new diagnostic chambers in the file. 
 
     Args:
-    :param diag_chamber_name: str
-        name of the diagnostic chamber
     :param file_path: str
-        Path to csv file with DiagnosticChamber channels. Should have a channel and form_factor
-        column. All channels will start unoccupied
+        Path to csv file with DiagnosticChamber channels. Should have a chamber_name, channel and form_factor
+        column. All channels will start unoccupied. 
         
-    Returns: initialized DiagnosticChamber object
+    Returns: {"name": DiagnosticChamber} return a dictionary with keys that are the chamber name and a value 
+                of a DiagnosticChamber object.
     """
 
     #Using pandas to load in csv more cleanly
     channel_df = pd.read_csv(file_path)
-    channel_dict = channel_df.to_dict(orient="list")
-    #set all channels to unoccupied
-    channel_dict["state"] = ["unoccupied"]*len(channel_dict["channel"])
-    #Set all batteries to an empty string since the channels are unoccupied
-    channel_dict["battery"] = [""]*len(channel_dict["channel"])
+    unique_diag_chambers = set(channel_df["chamber_name"])
+    diag_chamber_dict = {}
 
-    diag_chamber = DiagnosticChamber(name=diag_chamber_name, channels=channel_dict)
-    
-    return diag_chamber
+    for diag_chamber_name in unique_diag_chambers:
+        diag_chamber_channel_df = channel_df[channel_df["chamber_name"]==diag_chamber_name][["channel", "form_factor"]]
+        channel_dict = diag_chamber_channel_df.to_dict(orient="list")
+        #set all channels to unoccupied
+        channel_dict["state"] = ["unoccupied"]*len(channel_dict["channel"])
+        #Set all batteries to an empty string since the channels are unoccupied
+        channel_dict["battery"] = [""]*len(channel_dict["channel"])
+        #initialize diagnostic chamber
+        diag_chamber = DiagnosticChamber(name=diag_chamber_name, channels=channel_dict)
+        diag_chamber_dict[diag_chamber.name] = diag_chamber
+
+    return diag_chamber_dict
+
+def load_existing_diag_chambers(file_path):
+    """
+    Takes in the path to the json file where the existing diagnostic chambers are currently stored.
+
+    Args:
+    :param file_path: str
+        Path to json file with all current diagnostic chamber state and information stored
+
+    Returns: {"chamber_name": DiagnosticChamber} dictionary with diagnostic chamber name as key and a 
+                DiagnosticChamber obj as the value.
+    """
+
+    # Open the JSON file
+    with open(file_path, 'r') as infile:
+        json_diag_chamb_dict = json.load(infile)
+
+    #generate dictionary of battery objects
+    diag_chamb_obj_dict = {}
+    for key in json_diag_chamb_dict.keys():
+        diag_chamb_obj = DiagnosticChamber(**json_diag_chamb_dict[key])
+        diag_chamb_obj_dict[key] = diag_chamb_obj
+
+    return diag_chamb_obj_dict
