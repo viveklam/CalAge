@@ -3,7 +3,7 @@ import json
 
 class TemperatureChamber:
 
-    def __init__(self, name, temperature, battery_list=[]):
+    def __init__(self, name, temperature, battery_list=[], battery_under_diagnostic=[]):
         """
         Constructor of a Temperature Chamber object.
 
@@ -15,6 +15,9 @@ class TemperatureChamber:
             Temperature that the temperature chamber is being held at
         :param battery_list: [str]
             List of all the batteries barcodes that belong in this temperature chamber. 
+        :param battery_under_diagnostic: [str]
+            List of all batteries barcodes that are currently being tested in a diagnostic chamber
+            so although they are part of battery_list they will not be found in this chamber
 
         TODO: Could potentially augment this to say which rack etc a battery would be on to
                 help find it. Or it could be ordered based on where it should be in the chamber.
@@ -22,6 +25,7 @@ class TemperatureChamber:
         self.name = str(name)
         self.battery_list = list(battery_list)
         self.temperature = int(temperature)
+        self.battery_under_diagnostic = list(battery_under_diagnostic)
 
     def load_batteries(self, new_batteries):
         """
@@ -33,6 +37,40 @@ class TemperatureChamber:
         Returns: None
         """
         self.battery_list = self.battery_list+new_batteries
+
+    def assign_battery(self, battery_obj):
+        """
+        This function assigns a battery to this temperature chamber. In doing so it adds the battery
+        barcode to the chamber's battery list and updates the battery object's storage location and 
+        current location to this chamber
+        
+        Args:
+        :param battery_obj: Battery
+            Battery object that is now going to be assigned to this chamber
+        
+        Returns: None
+        """
+
+        #First check if battery obj temperature equals this chambers temperature
+        if battery_obj.temperature != self.temperature:
+            raise Exception("Battery object temperature and chamber temperature do not match")
+        
+        #Then check if this barcode already exists in the chamber
+        if battery_obj.barcode in self.battery_list:
+            raise Exception("Battery barcode already exists in this chamber")
+
+        battery_obj.storage_location = self.name
+        battery_obj.current_location = self.name
+        self.battery_list.append(battery_obj.barcode)
+
+        return None
+    
+    def return_battery(self, battery_obj):
+        """This will return the battery to this by removing it from the battery under diagnostic column"""
+
+        return None
+
+
 
 def load_new_temperature_chambers(file_path):
     """
