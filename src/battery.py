@@ -3,13 +3,15 @@ from dateutil.relativedelta import relativedelta
 from datetime import datetime
 import json
 import csv
+import re
+
 
 class Battery:
 
     def __init__(self, proj_name, barcode, seqnum, temperature, soc, diagnostic_frequency, cell_type,
                 form_factor, next_diag="today", storage_location="Unassigned", current_location="Unassigned",
-                testing_files = [], testing_start_dates=[], test_file_in_progress="", active_status=True, under_diag=False,
-                diagnostic_number=0, setting_file_proj_name=None):
+                data_file_history = [], testing_procedure_history = [], testing_start_dates=[], test_file_in_progress="", active_status=True, under_diag=False,
+                diagnostic_number=0):
         """
         Constructor of a Battery object.
 
@@ -29,7 +31,7 @@ class Battery:
         :param diagnostic_frequency: int
             The frequency of diagnostic of the battery in days.
         :param form_factor: string
-            The formfactor of the battery. Should be 
+            The formfactor of the battery. Should be ["21700", "18650", "pouch", "prismatic"]
         :param soc: int
             The state of charge of the battery.
         :param next_diag: string
@@ -54,7 +56,8 @@ class Battery:
         self.current_location = str(current_location)
 
         #Storing the history of the files and diagnostic run
-        self.testing_files = list(testing_files)
+        self.data_file_history = list(data_file_history)
+        self.testing_procedure_history = list(testing_procedure_history)
         self.testing_start_dates = list(testing_start_dates)
         self.test_file_in_progress = str(test_file_in_progress)
         
@@ -70,10 +73,13 @@ class Battery:
         if form_factor not in valid_form_factors:
             raise ValueError("Choose valid form factor from: {}".format(valid_form_factors))
             
-    def ready_for_checkup(self):
+    def ready_for_checkup(self, template):
         """
         This method is used to determine whether it is time for the battery to
         go through a diagnostic or a checkup cycle.
+        Args:
+        template: str
+            String 
 
         Returns(Boolean): True if today is later than the next diagnostic. False if not
         """
@@ -81,11 +87,66 @@ class Battery:
         next_diag_datetime = datetime.strptime(self.next_diag, "%m/%d/%Y")
         return date.today() >= next_diag_datetime
         
-    def generateDataFile(self):
+    def generate_data_file(self, template = "{battery.proj_name}_{battery.barcode}_{battery.seqnum}_CU{battery.diagnostic_number}"):
         """
-        Returns a file name (str) that the data should be saved in.
+        Generates a filename from the battery data object. Can be whatever user wants from the attributes of the 
+        battery data object. If using an attribute specifify in format {battery.field}.
+
+        TODO: Add functionality for a repeat test if an error has occure i.e. _v1 or something
+
+        Args:
+        template: str
+            String to specify filenaming convention of the battery. Should have diagnostic number and unique barcode
+            somewhere so that there are not conflicts with future tests.
+        
+        Returns: filename string
         """
-        return "{}_{}_{}_CU{}".format(self.proj_name, self.seqnum, self.barcode, self.diagnostic_number)
+
+        try:
+            # Find all placeholders in the format "battery.<field>"
+            placeholders = re.findall(r"\{battery\.(\w+)\}", template)
+
+            # For each placeholder, get the attribute from the battery object and replace it in the template
+            for placeholder in placeholders:
+                value = getattr(self, placeholder, None)
+                if value is None:
+                    raise ValueError(f"Invalid field '{placeholder}' for battery object")
+                # Replace the placeholder with the actual value
+                template = template.replace(f"{{battery.{placeholder}}}", str(value))
+
+            return template
+        except AttributeError as e:
+            raise ValueError(f"Error in template: {e}")
+
+
+    def generate_procedure_file(self, template = "{battery.proj_name}_{battery.cell_type}_{battery.soc}SOC.mps"):
+        """
+        Generates a procedure file from the battery data object. The procedure file is the testing file that 
+        is used to test the battery such as what is used by the Biologic or Maccor. The procedure file should
+        already be on the computer before the test, and is typically used repeatedly.
+
+        Args:
+        template: str
+            String to specify filenaming convention of the battery procedure file. 
+        
+        Returns: filename string
+        """
+
+        try:
+            # Find all placeholders in the format "battery.<field>"
+            placeholders = re.findall(r"\{battery\.(\w+)\}", template)
+
+            # For each placeholder, get the attribute from the battery object and replace it in the template
+            for placeholder in placeholders:
+                value = getattr(self, placeholder, None)
+                if value is None:
+                    raise ValueError(f"Invalid field '{placeholder}' for battery object")
+                # Replace the placeholder with the actual value
+                template = template.replace(f"{{battery.{placeholder}}}", str(value))
+
+            return template
+        except AttributeError as e:
+            raise ValueError(f"Error in template: {e}")
 
     def generateSettingFile(self):
         """

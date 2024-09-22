@@ -1,5 +1,7 @@
 import pandas as pd
 import json
+from datetime import datetime
+
 
 class TemperatureChamber:
 
@@ -181,8 +183,10 @@ class DiagnosticChamber:
         else:
             return False
     
-    def load_batteries(self, batteries_to_test):
+    def assign_channels(self, batteries_to_test):
         """
+        TODO: change these comments to match what is actually being done
+
         Given a list of Batteries to test it will find corresponding channels and report a list of
         channels that should be occupied with cells and what channels will remain unoccupied. 
 
@@ -209,6 +213,7 @@ class DiagnosticChamber:
 
         #Records all the battery assignments
         assignment_dict = {}
+        temporarily_blocked = []
 
         for battery in batteries_to_test:
             assigned = False
@@ -216,13 +221,8 @@ class DiagnosticChamber:
 
             #Loop over all channels and see if one is compatible then break if found
             for channel_num in range(number_of_channels):
-                if self.cell_compatible(channel_num, battery.form_factor):
-                    #Assign this cell to this channel
-                    self.channels["state"][channel_num]="loaded"
-                    self.channels["battery"][channel_num]=battery.barcode
-                    #Change battery's current location to this diagnostic chamber
-                    battery.current_location = self.name
-
+                if self.cell_compatible(channel_num, battery.form_factor) & (channel_num not in temporarily_blocked):
+                    temporarily_blocked.append(channel_num)
                     assignment_dict[self.channels["channel"][channel_num]] = battery.barcode
                     assigned=True
                     break
@@ -235,32 +235,295 @@ class DiagnosticChamber:
         
         return assignment_dict
 
+    
+    def create_channel_check_list(self, assignment_dict, battery_obj_dict, csv_location = "diagnostic_testing_verification.csv"):
+        """
+        This function creates a barcode channel verification csv file to check against to prevent human error.
 
-    def estimated_end_time(self, assignment_dict):
-        """This function will return the estimate for when."""
-        pass
+        Args:
+        @assignment_dict: dict
+            Dictionary of the channel name as the key and the barcode of the cell as the value
 
+        @csv_location: str
+            Location to save the verification
+        """
+
+        verification_dict = {}
+
+        verification_dict["Barcode"] = []
+        verification_dict["Current_Location"] = []
+        verification_dict["Testing_location"] = []
+        verification_dict["Channel"] = []
+        verification_dict["Scanned_Barcode"] = []
+
+
+        for key in assignment_dict:
+            barcode = assignment_dict[key]
+            battery = battery_obj_dict[barcode]
+            verification_dict["Barcode"].append(battery.barcode)
+            verification_dict["Current_Location"].append(battery.current_location)
+            verification_dict["Testing_location"].append(self.name)
+            verification_dict["Channel"].append(key)
+            verification_dict["Scanned_Barcode"].append("")
 
         
-    def generate_automatic_testing_file(self, assignment_dict, batteries_to_test):
-        """ 
-        This function will generate the automatic testing_file that can be loaded in to the machine of choice. 
-        """
+        df = pd.DataFrame.from_dict(verification_dict)
+        df.to_csv(csv_location, index=False)
 
+        return None
+
+    def verify_and_load(self, csv_location, battery_obj_dict, temp_chamb_obj_dict):
+        """
+        This function will verify that all scanned barcodes match what should be on 
+        the channel, and if so it will load the battery on to the corresponding channel
+
+        TODO: Fill out the rest of this function
         
-
-
-
-        pass
-
-
-    def start_testing(self):
+        
         """
-        Switches the diagnostic chamber to be actively testing.
+
+        verification_df = pd.read_csv(csv_location)
+        #check if any cells were incorrectly loaded if so stop here
+        incorrect_scanned_df = verification_df[(verification_df["Barcode"]!=verification_df["Scanned_Barcode"])]
+        if len(incorrect_scanned_df)!=0:
+            incorrect_channels = list(incorrect_scanned_df["Channel"])
+            raise Exception("Incorrect barcodes on Channels: {}".format(incorrect_channels))
+
+        #if verified now for each channel load the battery on to the diagnostic chamber and update battery locations
+        for idx in range(len(verification_df)):
+            channel_row = verification_df.iloc[idx]
+            channel = channel_row.Channel
+            barcode = channel_row.Barcode
+
+            #update channel information
+            channel_idx = self.channels["channel"].index(channel)
+            self.channels["state"][channel_idx] = "loaded"
+            self.channels["battery"][channel_idx] = barcode
+
+            battery_obj = battery_obj_dict[barcode]
+            #Tell temperature chamber battery is in diagnostic
+            temp_chamb_location = battery_obj.storage_location
+            temp_chamb_obj_dict[temp_chamb_location].battery_under_diagnostic.append(barcode)
+            #Update current location
+            battery_obj.current_location = self.name
+        return None
+    
+    def get_batch_start_file(self, battery_obj_dict, save_location="batch_start.csv", cycler_type = "Biologic"):
         """
+        Get automatic batch start file.
+
+        TODO: Fill out comments
+        TODO: Implement for different cyclers like Maccor
+        """
+
+        batch_start_dict = {}
+        batch_start_dict["Channel"] = []
+        batch_start_dict["File Name"] = []
+        batch_start_dict["Setting File Name"] = []
+        for channel_idx in range(len(self.channels["channel"])):
+            if self.channels["state"][channel_idx]=="loaded":
+                barcode = self.channels["battery"][channel_idx]
+                channel_name = self.channels["channel"][channel_idx]
+                #Generate file names
+                data_file_name = battery_obj_dict[barcode].generate_data_file()
+                procedure_file_name = battery_obj_dict[barcode].generate_procedure_file()
+
+                #Add to dict for storage
+                batch_start_dict["Channel"].append(channel_name)
+                batch_start_dict["File Name"].append(data_file_name)
+                batch_start_dict["Setting File Name"].append(procedure_file_name)
+
+        batch_start_df = pd.DataFrame.from_dict(batch_start_dict)
+        batch_start_df.to_csv(save_location)
+        print("Batch Start File Saved at {}".format(save_location))
+
+        return None
+
+    def start_channel_testing(self, battery_obj_dict):
+        """
+        This function will start all batteries that are in the "loaded" state on the diagnostic chamber. 
+        If the chamber is already active, or if a battery is still undergoing a diagnostic cycle it will 
+        throw an error.
+
+        Args:
+        @battery_obj_dict: Dict{barcode: Battery}
+            battery barcode as the key and the corresponding Battery data object as the key
+
+        Returns: None
+        """
+
+
+        today_date = datetime.today().strftime('%Y-%m-%d %H:%M')
+        if self.in_operation:
+            raise Exception("Diagnostic Chamber is currently in operation")
+
+        #check if any battery is under a diagnostic
+        for channel_idx in range(len(self.channels["channel"])):
+            if self.channels["state"][channel_idx]=="loaded":
+                battery_barcode = self.channels["battery"][channel_idx]
+                battery_obj = battery_obj_dict[battery_barcode]
+                #Battery already under diagnostic stop
+                if battery_obj.under_diag:
+                    channel_name =  self.channels["channel"][channel_idx]
+                    raise Exception("Battery {} on Channel {} is already under Diagnostic".format(battery_barcode, channel_name))
+
+        #If everything else is good start on the channels
         self.in_operation = True
+        channels_started = []
+        for channel_idx in range(len(self.channels["channel"])):
 
-        pass
+            self.diagnostic_start_time = today_date
+            #if a channel is loaded, start it and update chamber channel info and battery info
+            if self.channels["state"][channel_idx]=="loaded":
+                
+                battery_barcode = self.channels["battery"][channel_idx]
+                battery_obj = battery_obj_dict[battery_barcode]
+
+                #Change all battery attributes
+                battery_obj.under_diag = True
+                battery_obj.testing_start_dates.append(today_date)
+                #Record files tested
+                data_file_name = battery_obj.generate_data_file()
+                battery_obj.test_file_in_progress = data_file_name
+                battery_obj.data_file_history.append(data_file_name)
+                procedure_file_name = battery_obj.generate_procedure_file()
+                battery_obj.testing_procedure_history.append(procedure_file_name)
+
+                #Change channel status
+                self.channels["state"][channel_idx]="running"
+
+                channels_started.append(self.channels["channel"][channel_idx])
+
+        print("Channels started successfully: {}".format(channels_started))
+        return None
+
+    def diagnostic_finished(self, battery_obj_dict):
+        """
+        Confirm that the batteries are done testing. If done testing move everything that is running
+        to a completed state and put chamber in idle state. Batteries diagnostic number will now be 
+        incremented. Anything to be done at the previous diagnostic number should be done before this.
+
+        Args:
+        battery_obj_dict: Dict{barcode: Battery}
+            battery barcode as the key and the corresponding Battery data object as the key
+
+        Returns: None
+        """
+
+        if not self.in_operation:
+            raise Exception("Diagnostic Chamber is not currently in operation")
+
+        #If everything else is good start on the channels
+        self.in_operation = False
+        channels_reset = []
+        for channel_idx in range(len(self.channels["channel"])):
+
+            #if a channel is loaded, start it and update chamber channel info and battery info
+            if self.channels["state"][channel_idx]=="running":
+                
+                battery_barcode = self.channels["battery"][channel_idx]
+                battery_obj = battery_obj_dict[battery_barcode]
+
+                #Change all battery attributes
+                battery_obj.under_diag = False
+                battery_obj.diagnostic_number+=1
+                battery_obj.test_file_in_progress = ""
+
+                #Change channel status
+                self.channels["state"][channel_idx]="completed"
+
+                channels_reset.append(self.channels["channel"][channel_idx])
+
+        print("Channels reset successfully: {}".format(channels_reset))
+        return None
+
+    def generate_return_check_list(self, battery_obj_dict, csv_save_path = "chamber_return_verification.csv", 
+                                        sort_by=["Storage_location", "Channel"]):
+        """
+        This function creates a barcode temperature chamber return verification csv file to check against to prevent human error.
+
+        Args:
+        battery_obj_dict: Dict{barcode: Battery}
+            battery barcode as the key and the corresponding Battery data object as the key
+        csv_location: str
+            Location to save the verification
+        sort_by: [str]
+            This will simply sort the csv by the column chosen. Options are Barcode, Channel, Storage_location. If list is
+            longer than one value it will first sort based on the first column then the second, and so on in ascending
+            order. ex: ["Storage_location", "Channel"], will first sort by temperature chamber name, then by channel. 
+
+        Returns: None
+        """
+
+        return_dict = {}
+
+        return_dict["Barcode"] = []
+        return_dict["Current_Location"] = []
+        return_dict["Channel"] = []
+        return_dict["Storage_Location"] = []
+        return_dict["Scanned_Barcode"] = []
+
+        for channel_idx in range(len(self.channels["channel"])):
+            if self.channels["state"][channel_idx]=="completed":
+                barcode = self.channels["battery"][channel_idx]
+                battery = battery_obj_dict[barcode]
+                return_dict["Barcode"].append(battery.barcode)
+                return_dict["Current_Location"].append(battery.current_location)
+                return_dict["Channel"].append(self.channels["channel"][channel_idx])
+                return_dict["Storage_Location"].append(battery.storage_location)
+                return_dict["Scanned_Barcode"].append("")
+
+        df = pd.DataFrame.from_dict(return_dict)
+        df.sort_values(sort_by, inplace=True)
+
+        df.to_csv(csv_save_path, index=False)
+        print("Return checklist generated at {}".format(csv_save_path))
+        return None
+
+    def verify_and_return(self, return_csv_path, battery_obj_dict, temp_chamb_obj_dict):
+        """
+        This function verifies that the scanned barcode matches the actual barcode for where the battery should 
+        have gone back to. 
+
+        Args:
+        return_csv_path: str
+            Path where the return verification csv path is saved
+        battery_obj_dict: Dict{barcode: Battery}
+            Dictionary of barcode as key and Battery as the value
+        temp_chamb_obj_dict: Dict{chamber_name: TemperatureChamber}
+            Dictionary of chamber name as key and TemperatureChamber object as the value
+        
+        Returns: None
+        """
+
+        verification_df = pd.read_csv(return_csv_path)
+        #check if any cells were incorrectly returned if so stop here
+        incorrect_scanned_df = verification_df[(verification_df["Barcode"]!=verification_df["Scanned_Barcode"])]
+        if len(incorrect_scanned_df)!=0:
+            incorrect_barcode = list(incorrect_scanned_df["Barcode"])
+            raise Exception("Incorrect barcodes returned: {}".format(incorrect_barcode))
+        
+        #if verified, now return batteries to their storage location, and reset diagnostic chamber
+        for idx in range(len(verification_df)):
+            channel_row = verification_df.iloc[idx]
+            channel = channel_row.Channel
+            barcode = channel_row.Barcode
+
+            #update channel information
+            channel_idx = self.channels["channel"].index(channel)
+            self.channels["state"][channel_idx] = "unoccupied"
+            self.channels["battery"][channel_idx] = ""
+
+            battery_obj = battery_obj_dict[barcode]
+            temp_chamb_obj = temp_chamb_obj_dict[battery_obj.storage_location]
+            #Tell temperature chamber battery is no longer in diagnostic
+            temp_chamb_obj.battery_under_diagnostic.remove(barcode)
+            #Update current location
+            battery_obj.current_location = temp_chamb_obj.name
+        
+        print("All batteries returned successfully")
+        return None
+
 
 def load_new_diagnostic_chambers(file_path):
     """

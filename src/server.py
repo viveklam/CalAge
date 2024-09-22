@@ -126,10 +126,10 @@ def auto_assign_batteries(battery_obj_dict, temp_chamb_obj_dict, verbose=False):
         
         if not batteries_assigned:
             raise Exception("{} does not match any temperature chamber".format(battery_temp))
-
+    print("All Batteries Assigned")
     return None
 
-def determine_optimal_schedule(battery_list, chamber_capacity, max_weeks, objective="Min Average Start", verbose=False):
+def determine_optimal_schedule(battery_list, chamber_capacity, max_weeks, objective="Min Average Start", time_limit=60, verbose=False):
     """
     This determines the optimal scheduling of batteries given a battery list by formulating it as a integer
     linear program (ILP) using the pulp library. For details of the implementation see docs. 
@@ -137,6 +137,8 @@ def determine_optimal_schedule(battery_list, chamber_capacity, max_weeks, object
     Todo: 
     - Does not account that certain batteries can only be loaded on certain channels if they have certain
     form factors
+    - Batteries that have the same interval there is no benefit to switching them in the optimization. If 
+        this logic can be encoded, potentially saves on computation time. 
     - Could maybe give suggestions if optimal schedule can not be found?
     - different optimization objectives for things like chamber utilization such as optimizing a more even
         chamber utilization each week so there is more leway.
@@ -154,6 +156,8 @@ def determine_optimal_schedule(battery_list, chamber_capacity, max_weeks, object
         "Min Max Start": corresponds to minimizng the maximum time a battery is started
     @verbose: Boolean, default=False
         If true this will also print the output log of the solver
+    @time_limit: float, default=60
+        Time limit of the solver in seconds.
 
     Returns: [[Boolean]]
         2D Boolean Schedule Matrix row i corresponds to the index of Battery in battery_list, column corresponds
@@ -216,18 +220,27 @@ def determine_optimal_schedule(battery_list, chamber_capacity, max_weeks, object
 
     # Solve the ILP problem
     if verbose:
-        solver = pulp.PULP_CBC_CMD(msg=1)
+        solver = pulp.PULP_CBC_CMD(msg=1, timeLimit=time_limit)
     else:
-        solver = pulp.PULP_CBC_CMD(msg=0)
-    problem.solve(solver)
+        solver = pulp.PULP_CBC_CMD(msg=0, timeLimit=time_limit)
+    status = problem.solve(solver)
 
-    # Report and return
-    if pulp.LpStatus[problem.status]=="Optimal":
-        print(f"Optimal schedule found")
+    # Check the status of the solution
+    if status == pulp.LpStatusOptimal:
+        print("Optimal solution found")
         schedule_matrix = unpack_pulp_schedule_matrix(x)
         return schedule_matrix
+    elif status == pulp.LpStatusNotSolved:
+        raise Exception("Solver did not finish, no feasible solution found")
+    elif status == pulp.LpStatusInfeasible:
+        raise Exception("Problem is infeasible")
+    elif status == pulp.LpStatusUnbounded:
+        raise Exception("Problem is unbounded")
     else:
-        raise Exception("Failed to generate Optimal Schedule.")
+        print("Unknown issues present")
+        schedule_matrix = unpack_pulp_schedule_matrix(x)
+        return schedule_matrix
+
 
 def unpack_pulp_schedule_matrix(pulp_matrix):
     """
@@ -252,3 +265,82 @@ def unpack_pulp_schedule_matrix(pulp_matrix):
             schedule_matrix[i][j] = pulp_matrix[i][j].value()
 
     return schedule_matrix
+
+def get_latest_start_time(schedule_matrix):
+    """
+    Args: 
+    schedule_matrix: np.array([[]])
+        2D binary numpy array. Columns are weeks, rows are batteries. 1 if battery 
+        being tested 0 if not.
+
+    Returns: Max start week present in the matrix
+    """
+    
+    return np.max((schedule_matrix==1).argmax(axis=1))
+
+def get_average_start_time(schedule_matrix):
+    """
+    Args: 
+    schedule_matrix: np.array([[]])
+        2D binary numpy array. Columns are weeks, rows are batteries. 1 if battery 
+        being tested 0 if not.
+
+    Returns: Mean start week
+    """
+    
+    return np.mean((schedule_matrix==1).argmax(axis=1))
+
+def print_schedule(schedule_matrix, battery_list, chamber_capacity):
+    """
+    This prints out the chamber capacity weekly as well as the batteries that are tested.
+
+    Args: 
+    schedule_matrix: np.array([[]])
+        2D binary numpy array. Columns are weeks, rows are batteries. 1 if battery 
+        being tested 0 if not.
+    battery_list: [Battery]
+        List of batteries where the index corresponds to the row of the schedule_matrix
+    chamber_capacity: int
+        The capacity of the chambers that are used. This will be used to show how much of the chamber
+        is being used.
+
+    Returns: None
+    """
+    n_batteries, total_weeks = schedule_matrix.shape
+    total_batteries_tested_weekly = np.sum(schedule_matrix, axis=0)
+    for current_week in range(total_weeks):
+        print("Week {:.0f} {:.0f}/{:.0f}: ".format(current_week, total_batteries_tested_weekly[current_week], chamber_capacity))
+        for battery_idx in range(n_batteries):
+            if schedule_matrix[battery_idx, current_week]==1 :
+                battery=battery_list[battery_idx]
+                print(f"-Battery {battery.barcode} with Interval {battery.interval}")
+
+    return None
+
+
+def print_first_start_time(schedule_matrix, battery_list):
+    """
+    This function will print just prints whenever the batteries are first started.
+
+    Args:
+    schedule_matrix: np.array([[]])
+        2D binary numpy array. Columns are weeks, rows are batteries. 1 if battery 
+        being tested 0 if not.
+    battery_list: [Battery]
+        List of batteries where the index corresponds to the row of the schedule_matrix
+
+    Returns: None
+    """
+
+    n_batteries, total_weeks = schedule_matrix.shape
+    total_batteries_tested_weekly = np.sum(schedule_matrix, axis=0)
+    already_printed = [False]*n_batteries
+    for current_week in range(total_weeks):
+        print("Week {:.0f}: ".format(current_week))
+        for battery_idx in range(n_batteries):
+            if (schedule_matrix[battery_idx, current_week]==1) and (not already_printed[battery_idx]) :
+                battery=battery_list[battery_idx]
+                already_printed[battery_idx] = True
+                print(f"-Battery {battery.barcode} with Interval {battery.interval} Started")
+
+    return None
