@@ -11,7 +11,8 @@ class Battery:
     def __init__(self, proj_name, barcode, seqnum, temperature, soc, diagnostic_frequency, cell_type,
                 form_factor, next_diag="today", storage_location="Unassigned", current_location="Unassigned",
                 data_file_history = [], testing_procedure_history = [], testing_start_dates=[], test_file_in_progress="", active_status=True, under_diag=False,
-                diagnostic_number=0):
+                data_file_template = "{battery.proj_name}_{battery.barcode}_{battery.seqnum}_CU{battery.diagnostic_number}", 
+                procedure_file_template = "{battery.proj_name}_{battery.cell_type}_{battery.soc}SOC.mps", diagnostic_number=0):
         """
         Constructor of a Battery object.
 
@@ -60,6 +61,10 @@ class Battery:
         self.testing_procedure_history = list(testing_procedure_history)
         self.testing_start_dates = list(testing_start_dates)
         self.test_file_in_progress = str(test_file_in_progress)
+
+        #Naming convention
+        self.data_file_template = data_file_template
+        self.procedure_file_template = procedure_file_template
         
         #Get next diagnostic
         if next_diag != "today":
@@ -87,20 +92,17 @@ class Battery:
         next_diag_datetime = datetime.strptime(self.next_diag, "%m/%d/%Y")
         return date.today() >= next_diag_datetime
         
-    def generate_data_file(self, template = "{battery.proj_name}_{battery.barcode}_{battery.seqnum}_CU{battery.diagnostic_number}"):
+    def generate_data_file(self):
         """
         Generates a filename from the battery data object. Can be whatever user wants from the attributes of the 
         battery data object. If using an attribute specifify in format {battery.field}.
 
         TODO: Add functionality for a repeat test if an error has occure i.e. _v1 or something
 
-        Args:
-        template: str
-            String to specify filenaming convention of the battery. Should have diagnostic number and unique barcode
-            somewhere so that there are not conflicts with future tests.
-        
         Returns: filename string
         """
+
+        template = self.data_file_template
 
         try:
             # Find all placeholders in the format "battery.<field>"
@@ -125,12 +127,10 @@ class Battery:
         is used to test the battery such as what is used by the Biologic or Maccor. The procedure file should
         already be on the computer before the test, and is typically used repeatedly.
 
-        Args:
-        template: str
-            String to specify filenaming convention of the battery procedure file. 
-        
         Returns: filename string
         """
+
+        template = self.procedure_file_template
 
         try:
             # Find all placeholders in the format "battery.<field>"

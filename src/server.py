@@ -2,6 +2,7 @@ import csv
 import json
 import pulp
 import numpy as np
+import pandas as pd
 
 def save_batteries_to_json(battery_dict, file_path):
     """
@@ -129,7 +130,7 @@ def auto_assign_batteries(battery_obj_dict, temp_chamb_obj_dict, verbose=False):
     print("All Batteries Assigned")
     return None
 
-def determine_optimal_schedule(battery_list, chamber_capacity, max_weeks, objective="Min Average Start", time_limit=60, verbose=False):
+def determine_optimal_schedule(interval_list, chamber_capacity, max_weeks, objective="Min Average Start", time_limit=60, verbose=False):
     """
     This determines the optimal scheduling of batteries given a battery list by formulating it as a integer
     linear program (ILP) using the pulp library. For details of the implementation see docs. 
@@ -144,8 +145,8 @@ def determine_optimal_schedule(battery_list, chamber_capacity, max_weeks, object
         chamber utilization each week so there is more leway.
 
     Args:
-    @battery_list: [Battery]
-        List of Battery objects that are to be tested
+    @interval_list: [int]
+        List intervals the batteries need to be tested at
     @chamber_capacity: int
         Number of batteries that can be tested in a diagnostic chamber
     @max_weeks: int
@@ -167,7 +168,6 @@ def determine_optimal_schedule(battery_list, chamber_capacity, max_weeks, object
 
 
     #Get interval list of batteries
-    interval_list = [battery.interval for battery in battery_list]
     n_batteries = len(interval_list)
 
     # Create the ILP Problem
@@ -215,7 +215,7 @@ def determine_optimal_schedule(battery_list, chamber_capacity, max_weeks, object
                 problem += t_max >= j * s[i][j]
     elif objective == "Min Average Start":
         #Minimizing sum of all start weeks is same as minimizing average start week
-        problem += t_max >= pulp.lpSum(((j * s[i][j]) for j in range(max_weeks)) for i in range(n_batteries))
+        problem += t_max >= pulp.lpSum(((j * s[i][j])  for j in range(max_weeks)) for i in range(n_batteries))
 
 
     # Solve the ILP problem
@@ -344,3 +344,59 @@ def print_first_start_time(schedule_matrix, battery_list):
                 print(f"-Battery {battery.barcode} with Interval {battery.interval} Started")
 
     return None
+
+def get_panda_df_optimal_schedule(battery_obj_dict, diag_chamb_obj_dict, buffer=0, max_weeks = 7, time_limit=10, objective="Min Average Start"):
+    """
+    This is mostly a wrapper function for the actual pulp optimization. This will return 
+    the schedule matrix in a form with index labels and column names
+    
+    TODO: Finish the documentation
+
+    Args:
+    max_weeks(int): Max weeks to simulate out until
+    time_limit(int): time limit for how long to find a solution. If not found in this time conclude no feasible solution
+
+    returns: schedule_df(pd.DataFrame) index is the barcode, column is week/testing interval number. 1 means to test, 0 means to not test
+    """
+
+    #get chamber capacity
+    chamber_capacity = 0
+    for diag_chamb_name in diag_chamb_obj_dict.keys():
+        chamber_capacity += len(diag_chamb_obj_dict[diag_chamb_name].channels["channel"])
+
+    chamber_capacity -= buffer
+
+    interval_list = [battery_obj_dict[barcode].diagnostic_frequency for barcode in battery_obj_dict]
+
+    #Get optimal schedule matrix
+    schedule_matrix = determine_optimal_schedule(interval_list, chamber_capacity, max_weeks, objective=objective, verbose=False, time_limit=time_limit)
+    #Print values you may want to check
+    t_max = get_latest_start_time(schedule_matrix)
+    t_mean = get_average_start_time(schedule_matrix)
+
+    print("Max start time: {}".format(t_max))
+    print("Average start time: {}".format(t_mean))
+
+    
+
+    scheduler_matrix_dict = {}
+
+    scheduler_matrix_dict["Barcode"] = list(battery_obj_dict.keys())
+
+    for i in range(max_weeks):
+        scheduler_matrix_dict[f"Week_{i}"] = schedule_matrix[:,i]
+
+    schedule_df = pd.DataFrame.from_dict(scheduler_matrix_dict)
+    schedule_df = schedule_df.set_index("Barcode")
+
+    return schedule_df
+
+
+def batteries_to_test_week(schedule_df, week):
+    """Will return the barcodes of batteries that are to be tested on a specific week"""
+
+    week = 0 
+    week_df = schedule_df[f"week_{week}"]
+    barcode_to_test = list(week_df[week_df==1].index)
+
+    return barcode_to_test
